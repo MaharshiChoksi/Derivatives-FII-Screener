@@ -41,8 +41,8 @@ The app generates signals based on the following conditions:
 - **No Signal**: When the above conditions are not met
 
 ## Data Sources
-- NSE Participant OI: https://nsearchives.nseindia.com/content/nsccl/fao_participant_oi_*.csv
-- NSE FII Stats: https://nsearchives.nseindia.com/content/fo/fii_stats_*.xls
+- NSE Participant OI Aftermarket Daily Reports
+- NSE FII Stats OI Aftermarket Daily Reports
 
 ## Disclaimer
 ⚠️ **This is educational content only and not investment advice.** Do your own research before trading. Past performance does not guarantee future results. Trading in derivatives involves significant risk and may not be suitable for all investors.

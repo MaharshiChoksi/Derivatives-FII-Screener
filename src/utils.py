@@ -14,13 +14,15 @@ def scrape_nsedata(filepath, prevDate, currentDate):
         "fii_prev": f"{BASE}/fo/fii_stats_{prevDate:%d-%b-%Y}.xls",
     }
     
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "*/*",
-        "Referer": "https://www.nseindia.com"
-    }
     session = requests.Session()
-    session.headers.update(headers)
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://www.nseindia.com",
+        "Connection": "keep-alive",
+    })
+    session.get("https://www.nseindia.com", timeout=10)
 
     # Participant OI
     part_df = fetch_csv(session, urls["participant"], skiprows=1)
@@ -115,7 +117,7 @@ def convert_numeric(df:pd.DataFrame, exclude=("Instrument",)):
 def compute_ratios(part_df: pd.DataFrame, fii_curr_df: pd.DataFrame, fii_prev_df: pd.DataFrame):
     # Exclude TOTAL row
     part_df = part_df[part_df['Client_Type'] != 'TOTAL']
-    
+
     # Calculate participant OI per category
     participant_oi = {
         'INDEX FUTURES': (part_df['Future_Index_Long'] - part_df['Future_Index_Short']).sum(),
@@ -123,10 +125,13 @@ def compute_ratios(part_df: pd.DataFrame, fii_curr_df: pd.DataFrame, fii_prev_df
         'INDEX OPTIONS': ((part_df['Option_Index_Call_Long'] + part_df['Option_Index_Put_Long']) - (part_df['Option_Index_Call_Short'] + part_df['Option_Index_Put_Short'])).sum(),
         'STOCK OPTIONS': ((part_df['Option_Stock_Call_Long'] + part_df['Option_Stock_Put_Long']) - (part_df['Option_Stock_Call_Short'] + part_df['Option_Stock_Put_Short'])).sum(),
     }
-    
+    # compare forml: today oi > prev day oi + FIIs positive >>> long
     # Get FII OI per instrument
+    print(fii_curr_df)
     curr_fii_oi = fii_curr_df.set_index('Instrument')['OPEN_INTEREST_AT_THE_END_OF_THE_DAY_No_of_contracts'].to_dict()
     prev_fii_oi = fii_prev_df.set_index('Instrument')['OPEN_INTEREST_AT_THE_END_OF_THE_DAY_No_of_contracts'].to_dict()
+    curr_sell_amt = fii_curr_df.set_index('Instrument')['SELL_Amt_in_Crores'].to_dict()
+    curr_buy_amt = fii_curr_df.set_index('Instrument')['BUY_Amt_in_Crores'].to_dict()
     
     # Function to get category for instrument
     def get_category(instrument):
@@ -149,10 +154,13 @@ def compute_ratios(part_df: pd.DataFrame, fii_curr_df: pd.DataFrame, fii_prev_df
             curr_oi = participant_oi[category]
             curr_fii = curr_fii_oi[instrument]
             prev_fii = prev_fii_oi.get(instrument, 0)  # default 0 if not present
-            if curr_oi > prev_fii and curr_fii > 0:
-                signals[instrument] = f"Possible LONG: Participant OI ({curr_oi}) > Prev FII OI ({prev_fii}) and Curr FII OI > 0 ({curr_fii})"
-            elif curr_oi < prev_fii and curr_fii < 0:
-                signals[instrument] = f"Possible SHORT: Participant OI ({curr_oi}) < Prev FII OI ({prev_fii}) and Curr FII OI < 0 ({curr_fii})"
+            sell_amt = curr_sell_amt.get(instrument, 0)
+            buy_amt = curr_buy_amt.get(instrument, 0)
+            net_sell = sell_amt - buy_amt
+            if net_sell > 0 and curr_oi > prev_fii:
+                signals[instrument] = f"Possible LONG: Net sell ({net_sell:.2f}) > 0 and Participant OI ({curr_oi}) > Prev FII OI ({prev_fii})"
+            elif net_sell < 0 and curr_oi < prev_fii:
+                signals[instrument] = f"Possible SHORT: Net buy ({net_sell:.2f}) < 0 and Participant OI ({curr_oi}) < Prev FII OI ({prev_fii})"
             else:
                 signals[instrument] = "No clear trading signal based on the current derivatives OI data."
     
